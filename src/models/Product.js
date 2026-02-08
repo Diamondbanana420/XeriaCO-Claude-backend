@@ -103,6 +103,7 @@ const productSchema = new mongoose.Schema({
     },
 
     isActive: { type: Boolean, default: true },
+    status: { type: String, enum: ['draft', 'discovered', 'analyzed', 'listed', 'approved', 'active', 'paused', 'killed'], default: 'draft' },
     notes: { type: String, default: '' },
 }, {
     timestamps: true,
