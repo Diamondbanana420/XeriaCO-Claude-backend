@@ -203,9 +203,17 @@ router.post('/orders', async (req, res) => {
 // GET /api/store/orders/:id — Customer order tracking
 router.get('/orders/:id', async (req, res) => {
   try {
-    const order = await Order.findOne({
-      $or: [{ shopifyOrderId: req.params.id }, { _id: req.params.id }],
-    }).lean();
+    const mongoose = require('mongoose');
+    const id = req.params.id;
+    
+    // Build query - only include _id match if it's a valid ObjectId
+    const query = { shopifyOrderId: id };
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      query.$or = [{ shopifyOrderId: id }, { _id: id }];
+      delete query.shopifyOrderId;
+    }
+    
+    const order = await Order.findOne(query).lean();
 
     if (!order) return res.status(404).json({ error: 'Order not found' });
 
