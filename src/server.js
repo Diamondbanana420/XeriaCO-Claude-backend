@@ -271,9 +271,16 @@ if (fs.existsSync(publicDir)) {
     app.use(express.static(publicDir, { maxAge: '1d', index: false }));
 }
 
-const V9_BUNDLE_CDN = 'https://cdn.jsdelivr.net/gh/Diamondbanana420/xeriaco-frontend@main/dist/assets/index-BmztruuX.js';
-const localBundle = path.join(publicDir, 'assets/index-BmztruuX.js');
-const V9_SRC = fs.existsSync(localBundle) ? '/assets/index-BmztruuX.js' : V9_BUNDLE_CDN;
+// Auto-detect the V9 bundle from public/assets/
+const assetsDir = path.join(publicDir, 'assets');
+let bundleFile = 'index-DUF0v1J4.js'; // fallback
+if (fs.existsSync(assetsDir)) {
+    const jsFiles = fs.readdirSync(assetsDir).filter(f => f.startsWith('index-') && f.endsWith('.js'));
+    if (jsFiles.length > 0) bundleFile = jsFiles[0];
+}
+const V9_BUNDLE_CDN = `https://cdn.jsdelivr.net/gh/Diamondbanana420/xeriaco-frontend@main/dist/assets/${bundleFile}`;
+const localBundle = path.join(assetsDir, bundleFile);
+const V9_SRC = fs.existsSync(localBundle) ? `/assets/${bundleFile}` : V9_BUNDLE_CDN;
 
 const V9_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -281,7 +288,7 @@ const V9_HTML = `<!DOCTYPE html>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>XeriaCo V9 — Command Center</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>"/>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
   <style>body{margin:0;padding:0;background:#000}#v9-load{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#000;color:#6366f1;font-family:system-ui;font-size:14px;}</style>
 </head>
 <body>
