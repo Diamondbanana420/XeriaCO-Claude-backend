@@ -297,3 +297,16 @@ router.post('/store/newsletter', async (req, res) => {
 });
 
 module.exports = router;
+
+// Debug: check content generator config
+router.get('/admin/marketing/content-debug', clawdbotAuth, (req, res) => {
+  const contentGenerator = require('../services/ContentGenerator');
+  res.json({
+    falKeySet: !!process.env.FAL_KEY,
+    falApiKeySet: !!process.env.FAL_API_KEY,
+    falKeyPrefix: (process.env.FAL_KEY || '').substring(0, 8) || 'NOT SET',
+    falApiKeyPrefix: (process.env.FAL_API_KEY || '').substring(0, 8) || 'NOT SET',
+    generatorStatus: contentGenerator.getStatus(),
+    envKeysWithFal: Object.keys(process.env).filter(k => k.toLowerCase().includes('fal')),
+  });
+});
