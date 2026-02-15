@@ -212,7 +212,6 @@ Return ONLY the post text.`;
     const successCount = Object.values(summary).filter(r => r.success).length;
     const totalChannels = Object.keys(summary).length;
 
-    // Report to OpenClaw via Discord
     if (this.clawdbotBridge) {
       try {
         await this.clawdbotBridge.sendCommand('marketing_social_report', {
@@ -229,6 +228,93 @@ Return ONLY the post text.`;
     }
 
     return summary;
+  }
+
+  /**
+   * Post pre-generated content (from approval queue) to all channels.
+   * Uses the AI-generated image and captions instead of generating new ones.
+   */
+  async postContentToAll(content) {
+    this.logger.info(`SocialPoster: Posting approved content for "${content.title}"...`);
+    const imageUrl = content.image;
+    const results = {};
+
+    // Instagram — use pre-generated caption
+    if (this.igEnabled) {
+      try {
+        const caption = (content.caption?.instagram || content.title) +
+          '\n\n' + (content.caption?.hashtags || []).map(h => `#${h}`).join(' ');
+        const containerRes = await axios.post(
+          `https://graph.facebook.com/v22.0/${this.igUserId}/media`,
+          { image_url: imageUrl, caption, access_token: this.metaToken }
+        );
+        const containerId = containerRes.data?.id;
+        if (containerId) {
+          await new Promise(r => setTimeout(r, 5000));
+          const publishRes = await axios.post(
+            `https://graph.facebook.com/v22.0/${this.igUserId}/media_publish`,
+            { creation_id: containerId, access_token: this.metaToken }
+          );
+          results.instagram = { success: true, postId: publishRes.data?.id };
+          this.markPosted('instagram');
+        } else {
+          results.instagram = { success: false, reason: 'No container ID' };
+        }
+      } catch (err) {
+        results.instagram = { success: false, reason: err.response?.data?.error?.message || err.message };
+      }
+    } else {
+      results.instagram = { success: false, reason: 'not_configured' };
+    }
+
+    // Facebook — use pre-generated caption
+    if (this.metaEnabled) {
+      try {
+        const message = content.caption?.facebook || content.title;
+        const postData = { message, access_token: this.metaToken, link: `https://${this.storeDomain}` };
+        const res = imageUrl
+          ? await axios.post(`https://graph.facebook.com/v22.0/${this.metaPageId}/photos`, { ...postData, url: imageUrl })
+          : await axios.post(`https://graph.facebook.com/v22.0/${this.metaPageId}/feed`, postData);
+        results.facebook = { success: true, postId: res.data?.id };
+        this.markPosted('facebook');
+      } catch (err) {
+        results.facebook = { success: false, reason: err.response?.data?.error?.message || err.message };
+      }
+    } else {
+      results.facebook = { success: false, reason: 'not_configured' };
+    }
+
+    // Pinterest — use pre-generated caption
+    if (this.pinterestEnabled) {
+      try {
+        if (!imageUrl) throw new Error('No image');
+        const res = await axios.post('https://api.pinterest.com/v5/pins', {
+          board_id: this.pinterestBoardId,
+          title: content.title,
+          description: content.caption?.pinterest || content.title,
+          link: `https://${this.storeDomain}`,
+          media_source: { source_type: 'image_url', url: imageUrl },
+        }, { headers: { 'Authorization': `Bearer ${this.pinterestToken}`, 'Content-Type': 'application/json' } });
+        results.pinterest = { success: true, pinId: res.data?.id };
+        this.markPosted('pinterest');
+      } catch (err) {
+        results.pinterest = { success: false, reason: err.message };
+      }
+    } else {
+      results.pinterest = { success: false, reason: 'not_configured' };
+    }
+
+    const successCount = Object.values(results).filter(r => r.success).length;
+    if (this.clawdbotBridge) {
+      try {
+        await this.clawdbotBridge.sendCommand('marketing_content_posted', {
+          product: content.title, image: imageUrl, results, successCount,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err) {}
+    }
+
+    return results;
   }
 
   getStatus() {

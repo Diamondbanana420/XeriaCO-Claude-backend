@@ -10,6 +10,7 @@
 
 const klaviyo = require('./KlaviyoService');
 const socialPoster = require('./SocialPoster');
+const contentGenerator = require('./ContentGenerator');
 
 class MarketingOrchestrator {
   constructor() {
@@ -19,6 +20,9 @@ class MarketingOrchestrator {
       productsMarketed: 0,
       newsletterSignups: 0,
       ordersTracked: 0,
+      contentGenerated: 0,
+      contentApproved: 0,
+      contentRejected: 0,
       lastRun: null,
     };
 
@@ -42,6 +46,7 @@ class MarketingOrchestrator {
     // Initialize sub-services
     klaviyo.init(logger, clawdbotBridge);
     socialPoster.init(logger, clawdbotBridge, aiGenerator);
+    contentGenerator.init(aiGenerator);
   }
 
   // ═══════════════════════════════════════
@@ -308,6 +313,221 @@ class MarketingOrchestrator {
   }
 
   // ═══════════════════════════════════════
+  // CONTENT GENERATION PIPELINE
+  // ═══════════════════════════════════════
+
+  /**
+   * Generate marketing content for products after pipeline completes.
+   * Creates 1 image + 1 video + captions per product → goes to approval queue.
+   */
+  async runContentPipeline(products, pipelineRunId = null) {
+    if (!contentGenerator.isEnabled) {
+      this.logger.warn('ContentGenerator not enabled — skipping content pipeline');
+      return { generated: 0, skipped: products.length, reason: 'ContentGenerator disabled' };
+    }
+
+    const MarketingContent = require('../models/MarketingContent');
+    let generated = 0, failed = 0;
+
+    for (const product of products) {
+      try {
+        // Skip if already has pending/approved content
+        const existing = await MarketingContent.findOne({
+          productId: product._id,
+          status: { $in: ['generating', 'pending_approval', 'approved'] },
+        });
+        if (existing) {
+          this.logger.info(`Content already exists for "${product.title}" — skipping`);
+          continue;
+        }
+
+        // Create placeholder doc
+        const contentDoc = new MarketingContent({
+          productId: product._id,
+          productTitle: product.title,
+          productImage: product.featuredImage || product.images?.[0]?.url,
+          productPrice: product.sellingPriceAud || product.price,
+          productCategory: product.category,
+          status: 'generating',
+          pipelineRunId,
+        });
+        await contentDoc.save();
+
+        // Generate everything
+        this.logger.info(`Generating content for "${product.title}"...`);
+        const content = await contentGenerator.generateForProduct(product);
+
+        // Update doc with generated content
+        contentDoc.caption = content.caption;
+        contentDoc.image = content.image;
+        contentDoc.generationCost = content.generationCost;
+        contentDoc.status = 'pending_approval';
+        await contentDoc.save();
+
+        generated++;
+        this.stats.contentGenerated++;
+        this._addActivity('content_generated', `Content generated for "${product.title}" ($${content.generationCost.toFixed(2)})`, { productTitle: product.title, cost: content.generationCost });
+
+        await this._alertOpenClaw('marketing_content_generated', {
+          title: product.title,
+          imageReady: content.image.status === 'ready',
+          cost: content.generationCost,
+        });
+
+        // Rate limit — 2s between products
+        if (products.indexOf(product) < products.length - 1) {
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      } catch (err) {
+        failed++;
+        this.logger.error(`Content generation failed for "${product.title}": ${err.message}`);
+        // Mark as failed if doc was created
+        try {
+          await MarketingContent.updateOne(
+            { productId: product._id, status: 'generating' },
+            { status: 'failed', 'image.error': err.message }
+          );
+        } catch (e) {}
+      }
+    }
+
+    this.logger.info(`Content pipeline: ${generated} generated, ${failed} failed, ${products.length - generated - failed} skipped`);
+    return { generated, failed, total: products.length };
+  }
+
+  /**
+   * Approve content — triggers auto-posting to all social channels
+   */
+  async approveContent(contentId) {
+    const MarketingContent = require('../models/MarketingContent');
+    const content = await MarketingContent.findById(contentId);
+    if (!content) throw new Error('Content not found');
+    if (content.status !== 'pending_approval') throw new Error(`Cannot approve content with status: ${content.status}`);
+
+    content.status = 'approved';
+    content.approvedAt = new Date();
+    await content.save();
+    this.stats.contentApproved++;
+
+    // Auto-post to social channels
+    try {
+      const postResults = await socialPoster.postContentToAll({
+        title: content.productTitle,
+        price: content.productPrice,
+        category: content.productCategory,
+        image: content.image?.url || content.productImage,
+        caption: content.caption,
+      });
+
+      const successCount = Object.values(postResults).filter(r => r?.success).length;
+      content.status = 'posted';
+      content.postedAt = new Date();
+      content.postResults = postResults;
+      await content.save();
+      this.stats.socialPostsSent += successCount;
+
+      this._addActivity('content_posted', `Posted "${content.productTitle}" to ${successCount} channels`, { productTitle: content.productTitle, successCount });
+      return { success: true, posted: successCount, results: postResults };
+    } catch (err) {
+      this.logger.error(`Auto-post failed for "${content.productTitle}": ${err.message}`);
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Reject content
+   */
+  async rejectContent(contentId, reason = '') {
+    const MarketingContent = require('../models/MarketingContent');
+    const content = await MarketingContent.findById(contentId);
+    if (!content) throw new Error('Content not found');
+
+    content.status = 'rejected';
+    content.rejectedAt = new Date();
+    content.rejectionReason = reason;
+    await content.save();
+    this.stats.contentRejected++;
+    this._addActivity('content_rejected', `Rejected content for "${content.productTitle}"${reason ? ': ' + reason : ''}`, { productTitle: content.productTitle });
+    return { success: true };
+  }
+
+  /**
+   * Regenerate content for a product (creates new entry)
+   */
+  async regenerateContent(contentId) {
+    const MarketingContent = require('../models/MarketingContent');
+    const { Product } = require('../models');
+    const old = await MarketingContent.findById(contentId);
+    if (!old) throw new Error('Content not found');
+
+    // Mark old as rejected
+    old.status = 'rejected';
+    old.rejectionReason = 'Regenerated';
+    await old.save();
+
+    // Get the product
+    const product = await Product.findById(old.productId).lean();
+    if (!product) throw new Error('Product not found');
+
+    // Generate fresh content
+    const contentDoc = new MarketingContent({
+      productId: product._id,
+      productTitle: product.title,
+      productImage: product.featuredImage || product.images?.[0]?.url,
+      productPrice: product.sellingPriceAud || product.price,
+      productCategory: product.category,
+      status: 'generating',
+      regenerationCount: (old.regenerationCount || 0) + 1,
+      regeneratedFrom: old._id,
+    });
+    await contentDoc.save();
+
+    try {
+      const content = await contentGenerator.generateForProduct(product);
+      contentDoc.caption = content.caption;
+      contentDoc.image = content.image;
+      contentDoc.video = content.video;
+      contentDoc.generationCost = content.generationCost;
+      contentDoc.status = 'pending_approval';
+      await contentDoc.save();
+      this.stats.contentGenerated++;
+      this._addActivity('content_regenerated', `Regenerated content for "${product.title}"`, { productTitle: product.title });
+      return contentDoc;
+    } catch (err) {
+      contentDoc.status = 'failed';
+      contentDoc.image = { status: 'failed', error: err.message };
+      await contentDoc.save();
+      throw err;
+    }
+  }
+
+  /**
+   * Get content queue for dashboard
+   */
+  async getContentQueue(statusFilter = null, limit = 50) {
+    const MarketingContent = require('../models/MarketingContent');
+    const query = statusFilter ? { status: statusFilter } : {};
+    return MarketingContent.find(query).sort({ createdAt: -1 }).limit(limit).lean();
+  }
+
+  /**
+   * Get content queue stats
+   */
+  async getContentQueueStats() {
+    const MarketingContent = require('../models/MarketingContent');
+    const [pending, approved, rejected, posted, generating, failed] = await Promise.all([
+      MarketingContent.countDocuments({ status: 'pending_approval' }),
+      MarketingContent.countDocuments({ status: 'approved' }),
+      MarketingContent.countDocuments({ status: 'rejected' }),
+      MarketingContent.countDocuments({ status: 'posted' }),
+      MarketingContent.countDocuments({ status: 'generating' }),
+      MarketingContent.countDocuments({ status: 'failed' }),
+    ]);
+    const totalCost = await MarketingContent.aggregate([{ $group: { _id: null, total: { $sum: '$generationCost' } } }]);
+    return { pending, approved, rejected, posted, generating, failed, totalCost: totalCost[0]?.total || 0 };
+  }
+
+  // ═══════════════════════════════════════
   // STATUS (included in admin dashboard)
   // ═══════════════════════════════════════
   async getFullStatus() {
@@ -378,6 +598,8 @@ class MarketingOrchestrator {
     const klaviyoStatus = await klaviyo.healthCheck();
     const socialStatus = socialPoster.getStatus();
     const uptime = Date.now() - new Date(this.startedAt).getTime();
+    const contentQueueStats = await this.getContentQueueStats();
+    const contentGenStatus = contentGenerator.getStatus();
 
     return {
       stats: {
@@ -393,6 +615,8 @@ class MarketingOrchestrator {
         metaPixel: { status: process.env.NEXT_PUBLIC_META_PIXEL_ID ? 'configured' : 'disabled' },
         ga4: { status: process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID ? 'configured' : 'disabled' },
       },
+      contentQueue: contentQueueStats,
+      contentGenerator: contentGenStatus,
       socialHistory: this.socialHistory.slice(0, 50),
       activityFeed: this.recentActivity.slice(0, 100),
       uptime: {

@@ -176,6 +176,79 @@ router.post('/admin/marketing/test', clawdbotAuth, async (req, res) => {
 });
 
 // ═══════════════════════════════════════
+// CONTENT QUEUE ROUTES — Approval workflow
+// ═══════════════════════════════════════
+
+// Get content queue (pending approval, with filters)
+router.get('/admin/marketing/content-queue', clawdbotAuth, async (req, res) => {
+  try {
+    const status = req.query.status || null;
+    const limit = parseInt(req.query.limit) || 50;
+    const queue = await marketing.getContentQueue(status, limit);
+    res.json({ content: queue, total: queue.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get content queue stats
+router.get('/admin/marketing/content-stats', clawdbotAuth, async (req, res) => {
+  try {
+    const stats = await marketing.getContentQueueStats();
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Approve content → auto-posts to social
+router.post('/admin/marketing/content/:id/approve', clawdbotAuth, async (req, res) => {
+  try {
+    const result = await marketing.approveContent(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reject content
+router.post('/admin/marketing/content/:id/reject', clawdbotAuth, async (req, res) => {
+  try {
+    const result = await marketing.rejectContent(req.params.id, req.body.reason || '');
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Regenerate content
+router.post('/admin/marketing/content/:id/regenerate', clawdbotAuth, async (req, res) => {
+  try {
+    const newContent = await marketing.regenerateContent(req.params.id);
+    res.json({ success: true, content: newContent });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Manually trigger content generation for specific product
+router.post('/admin/marketing/generate', clawdbotAuth, async (req, res) => {
+  try {
+    const { productId } = req.body;
+    if (!productId) return res.status(400).json({ error: 'productId required' });
+    
+    const { Product } = require('../models');
+    const product = await Product.findById(productId).lean();
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+
+    const result = await marketing.runContentPipeline([product], 'manual');
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════
 // PUBLIC ROUTES — Storefront tracking
 // ═══════════════════════════════════════
 

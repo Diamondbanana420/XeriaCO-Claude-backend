@@ -364,6 +364,19 @@ async function executePipeline(run) {
           run.results.productsAutoListed = autoListed;
           await run.save();
           logger.info(`Auto-listed ${autoListed} products for storefront`);
+
+          // Trigger marketing content generation for newly listed products
+          if (unlisted.length > 0) {
+            try {
+              logger.info(`Starting marketing content generation for ${unlisted.length} products...`);
+              const mktResult = await marketing.runContentPipeline(unlisted, run.runId);
+              run.results.marketingContent = mktResult;
+              await run.save();
+              logger.info(`Marketing content: ${mktResult.generated} generated, ${mktResult.failed} failed`);
+            } catch (mktErr) {
+              logger.warn('Marketing content pipeline failed', { error: mktErr.message });
+            }
+          }
       } catch (autoErr) {
           logger.warn('Auto-list failed', { error: autoErr.message });
       }
