@@ -10,6 +10,7 @@ const aiContent = require('../services/AIContentGenerator');
 const competitorScraper = require('../services/CompetitorScraper');
 const airtableSync = require('../services/AirtableSync');
 const n8nIntegration = require('../services/N8nIntegration');
+const marketing = require('../services/MarketingOrchestrator');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
 
@@ -297,6 +298,13 @@ async function executePipeline(run) {
                             product.lastSyncedToWooCommerce = new Date();
                             await product.save();
                             listed++;
+
+                            // Trigger marketing automation (social posts, email, OpenClaw alert)
+                            try {
+                              await marketing.onProductLive(product);
+                            } catch (mktErr) {
+                              logger.warn(`Marketing hook failed for ${product.title}: ${mktErr.message}`);
+                            }
                   } catch (err) {
                             run.results.errors.push({ stage: 'woocommerce_listing', message: `${product.title}: ${err.message}`, timestamp: new Date() });
                   }

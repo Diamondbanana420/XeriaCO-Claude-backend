@@ -11,6 +11,7 @@ const airtableSync = require('../services/AirtableSync');
 const n8nIntegration = require('../services/N8nIntegration');
 const fraudScorer = require('../services/FraudScorer');
 const orderProcessor = require('../services/OrderProcessor');
+const marketing = require('../services/MarketingOrchestrator');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
 
@@ -92,6 +93,7 @@ router.get('/dashboard', async (req, res) => {
         last: lastPipeline ? { runId: lastPipeline.runId, completedAt: lastPipeline.completedAt, listed: lastPipeline.results?.productsListed } : null,
       },
       suppliers: totalSuppliers,
+      marketing: marketing.getDashboardSummary(),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const ShopifyService = require('../services/ShopifyService');
 const orderProcessor = require('../services/OrderProcessor');
+const marketing = require('../services/MarketingOrchestrator');
 const { Product, Order } = require('../models');
 const logger = require('../utils/logger');
 const config = require('../../config');
@@ -47,6 +48,14 @@ router.post('/orders/create', verifyHmac, async (req, res) => {
     const shopifyOrder = req.body;
     logger.info(`Webhook: orders/create — ${shopifyOrder.name}`);
     await orderProcessor.processNewOrder(shopifyOrder);
+    
+    // Track in marketing system (Klaviyo post-purchase flow + OpenClaw alert)
+    try {
+      await marketing.onOrderPlaced(shopifyOrder);
+    } catch (mktErr) {
+      logger.warn(`Marketing order tracking failed: ${mktErr.message}`);
+    }
+    
     res.status(200).json({ received: true });
   } catch (err) {
     logger.error('Webhook orders/create error', { error: err.message });

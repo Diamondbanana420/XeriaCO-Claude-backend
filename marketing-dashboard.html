@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XeriaCO — Marketing Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0a;--surface:#111;--surface2:#1a1a1a;--border:#2a2a2a;--gold:#d4a843;--gold2:#b8922e;--gold-dim:rgba(212,168,67,.15);--green:#22c55e;--red:#ef4444;--blue:#3b82f6;--purple:#a855f7;--text:#e5e5e5;--text2:#999;--text3:#666;--font:'DM Sans',sans-serif;--mono:'JetBrains Mono',monospace}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;overflow-x:hidden}
+.container{max-width:1440px;margin:0 auto;padding:24px}
+
+/* Header */
+.header{display:flex;justify-content:space-between;align-items:center;padding:20px 0;border-bottom:1px solid var(--border);margin-bottom:24px}
+.header h1{font-size:24px;font-weight:700;color:#fff}
+.header h1 span{color:var(--gold);font-weight:400}
+.header-right{display:flex;gap:12px;align-items:center}
+.status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+.status-dot.live{background:var(--green);box-shadow:0 0 8px rgba(34,197,94,.5)}
+.status-dot.off{background:var(--red)}
+.refresh-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text2);padding:8px 16px;border-radius:8px;cursor:pointer;font-family:var(--font);font-size:13px;transition:all .2s}
+.refresh-btn:hover{border-color:var(--gold);color:var(--gold)}
+
+/* Grid */
+.grid{display:grid;gap:16px;margin-bottom:24px}
+.grid-4{grid-template-columns:repeat(4,1fr)}
+.grid-3{grid-template-columns:repeat(3,1fr)}
+.grid-2{grid-template-columns:1fr 1fr}
+.grid-12{grid-template-columns:2fr 1fr}
+@media(max-width:1024px){.grid-4,.grid-3{grid-template-columns:repeat(2,1fr)}.grid-2,.grid-12{grid-template-columns:1fr}}
+@media(max-width:640px){.grid-4,.grid-3,.grid-2,.grid-12{grid-template-columns:1fr}}
+
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;transition:border-color .2s}
+.card:hover{border-color:var(--border)}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.card-title{font-size:14px;color:var(--text2);font-weight:500;text-transform:uppercase;letter-spacing:.5px}
+.card-value{font-size:36px;font-weight:700;color:#fff;font-family:var(--mono);line-height:1}
+.card-sub{font-size:12px;color:var(--text3);margin-top:4px}
+
+/* Stat cards */
+.stat-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.stat-icon.gold{background:var(--gold-dim);color:var(--gold)}
+.stat-icon.green{background:rgba(34,197,94,.15);color:var(--green)}
+.stat-icon.blue{background:rgba(59,130,246,.15);color:var(--blue)}
+.stat-icon.purple{background:rgba(168,85,247,.15);color:var(--purple)}
+.stat-icon.red{background:rgba(239,68,68,.15);color:var(--red)}
+
+/* Channel status */
+.channel-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)}
+.channel-row:last-child{border-bottom:none}
+.channel-name{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:500}
+.channel-icon{font-size:18px;width:28px;text-align:center}
+.channel-badge{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.badge-active{background:rgba(34,197,94,.15);color:var(--green)}
+.badge-disabled{background:rgba(239,68,68,.1);color:var(--red)}
+.badge-configured{background:rgba(212,168,67,.15);color:var(--gold)}
+
+/* Activity feed */
+.feed-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px}
+.feed-item:last-child{border-bottom:none}
+.feed-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
+.feed-dot.social{background:var(--blue)}
+.feed-dot.order{background:var(--green)}
+.feed-dot.signup{background:var(--gold)}
+.feed-dot.product_live{background:var(--purple)}
+.feed-dot.digest{background:var(--gold)}
+.feed-dot.checkout{background:#f59e0b}
+.feed-dot.system{background:var(--text3)}
+.feed-dot.social_force{background:var(--blue)}
+.feed-msg{color:var(--text);flex:1}
+.feed-time{color:var(--text3);font-size:11px;font-family:var(--mono);white-space:nowrap}
+
+/* Social history table */
+.table{width:100%;border-collapse:collapse;font-size:13px}
+.table th{text-align:left;padding:10px 12px;color:var(--text3);font-weight:500;text-transform:uppercase;letter-spacing:.3px;font-size:11px;border-bottom:1px solid var(--border)}
+.table td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--text2)}
+.table tr:hover td{color:var(--text)}
+.table .success{color:var(--green)}
+.table .fail{color:var(--red)}
+.table .platform{font-weight:600;text-transform:capitalize}
+
+/* Loading */
+.loading{display:flex;align-items:center;justify-content:center;padding:40px;color:var(--text3)}
+.spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:spin .6s linear infinite;margin-right:10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Section titles */
+.section-title{font-size:16px;font-weight:600;color:#fff;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+
+/* Quick actions */
+.action-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 16px;border-radius:8px;cursor:pointer;font-family:var(--font);font-size:13px;font-weight:500;transition:all .2s;display:flex;align-items:center;gap:8px}
+.action-btn:hover{border-color:var(--gold);color:var(--gold)}
+.action-btn.primary{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#000;border-color:transparent}
+.action-btn.primary:hover{opacity:.9}
+.actions-row{display:flex;gap:8px;flex-wrap:wrap}
+
+/* Scrollable */
+.scroll-area{max-height:400px;overflow-y:auto}
+.scroll-area::-webkit-scrollbar{width:4px}
+.scroll-area::-webkit-scrollbar-track{background:transparent}
+.scroll-area::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+
+/* Uptime */
+.uptime-bar{height:4px;background:var(--surface2);border-radius:2px;overflow:hidden;margin-top:8px}
+.uptime-fill{height:100%;background:linear-gradient(90deg,var(--gold),var(--green));border-radius:2px;transition:width .5s}
+
+/* Error state */
+.error-msg{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:16px;color:var(--red);font-size:13px;text-align:center}
+
+/* Auth overlay */
+.auth-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:999}
+.auth-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px;max-width:360px;width:100%}
+.auth-box h2{font-size:20px;font-weight:700;color:#fff;margin-bottom:4px}
+.auth-box p{font-size:13px;color:var(--text3);margin-bottom:20px}
+.auth-input{width:100%;padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:#fff;font-family:var(--font);font-size:14px;outline:none}
+.auth-input:focus{border-color:var(--gold)}
+.auth-submit{width:100%;margin-top:12px;padding:12px;background:linear-gradient(135deg,var(--gold),var(--gold2));color:#000;border:none;border-radius:8px;font-family:var(--font);font-weight:600;font-size:14px;cursor:pointer}
+</style>
+</head>
+<body>
+
+<!-- Auth Screen -->
+<div class="auth-overlay" id="authOverlay">
+  <div class="auth-box">
+    <div style="width:40px;height:3px;background:linear-gradient(90deg,var(--gold),var(--gold2));border-radius:2px;margin-bottom:16px"></div>
+    <h2>Marketing Dashboard</h2>
+    <p>Enter admin password to access XeriaCO marketing controls.</p>
+    <input type="password" class="auth-input" id="authInput" placeholder="Admin password" onkeydown="if(event.key==='Enter')doAuth()">
+    <button class="auth-submit" onclick="doAuth()">Access Dashboard</button>
+    <div id="authError" style="color:var(--red);font-size:12px;margin-top:8px;display:none">Invalid password</div>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div class="container" id="dashboard" style="display:none">
+  <div class="header">
+    <h1>XeriaCO <span>Marketing</span></h1>
+    <div class="header-right">
+      <span style="font-size:12px;color:var(--text3)" id="lastUpdate">—</span>
+      <span><span class="status-dot live" id="statusDot"></span><span style="font-size:13px;color:var(--text2)" id="statusText">Loading...</span></span>
+      <button class="refresh-btn" onclick="loadData()">↻ Refresh</button>
+    </div>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="grid grid-4" id="kpiGrid">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Social Posts</span><div class="stat-icon blue">📣</div></div>
+      <div class="card-value" id="kpiSocial">—</div>
+      <div class="card-sub" id="kpiSocialSub">sent to channels</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Email Events</span><div class="stat-icon purple">📧</div></div>
+      <div class="card-value" id="kpiEmail">—</div>
+      <div class="card-sub" id="kpiEmailSub">tracked in Klaviyo</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Newsletter Signups</span><div class="stat-icon gold">📝</div></div>
+      <div class="card-value" id="kpiSignups">—</div>
+      <div class="card-sub">subscribers captured</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Orders Tracked</span><div class="stat-icon green">🛒</div></div>
+      <div class="card-value" id="kpiOrders">—</div>
+      <div class="card-sub" id="kpiOrdersSub">post-purchase flows triggered</div>
+    </div>
+  </div>
+
+  <!-- Secondary Stats -->
+  <div class="grid grid-4" style="margin-bottom:24px">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Products Marketed</span><div class="stat-icon gold">🚀</div></div>
+      <div class="card-value" id="kpiProducts">—</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Checkouts Tracked</span><div class="stat-icon blue">💳</div></div>
+      <div class="card-value" id="kpiCheckouts">—</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Product Views</span><div class="stat-icon purple">👁</div></div>
+      <div class="card-value" id="kpiViews">—</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Digests Sent</span><div class="stat-icon green">📨</div></div>
+      <div class="card-value" id="kpiDigests">—</div>
+    </div>
+  </div>
+
+  <!-- Channels + Quick Actions -->
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="section-title">📡 Channel Status</div>
+      <div id="channelsList">
+        <div class="loading"><div class="spinner"></div>Loading channels...</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-title">⚡ Quick Actions</div>
+      <div class="actions-row" style="margin-bottom:12px">
+        <button class="action-btn primary" onclick="runTest()">🧪 Test All Channels</button>
+        <button class="action-btn" onclick="sendDigest()">📨 Send Digest</button>
+      </div>
+      <div class="actions-row" style="margin-bottom:16px">
+        <button class="action-btn" onclick="promptPostProduct()">📣 Post Product</button>
+        <button class="action-btn" onclick="loadData()">↻ Refresh Data</button>
+      </div>
+      <div id="actionResult" style="font-size:12px;color:var(--text3);margin-top:8px"></div>
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:12px;color:var(--text3)">System Uptime</span>
+          <span style="font-size:12px;color:var(--text2);font-family:var(--mono)" id="uptimeText">—</span>
+        </div>
+        <div class="uptime-bar"><div class="uptime-fill" id="uptimeBar" style="width:0%"></div></div>
+      </div>
+      <div style="margin-top:12px;display:flex;justify-content:space-between">
+        <span style="font-size:12px;color:var(--text3)">Pending Posts</span>
+        <span style="font-size:12px;font-family:var(--mono);color:var(--gold)" id="pendingPosts">0</span>
+      </div>
+      <div style="margin-top:6px;display:flex;justify-content:space-between">
+        <span style="font-size:12px;color:var(--text3)">Queue Processing</span>
+        <span style="font-size:12px;font-family:var(--mono)" id="queueProcessing">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Activity Feed + Social History -->
+  <div class="grid grid-12" style="margin-top:16px">
+    <div class="card">
+      <div class="section-title">📋 Social Post History</div>
+      <div class="scroll-area" id="socialHistory">
+        <div class="loading"><div class="spinner"></div>Loading history...</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-title">🔔 Activity Feed</div>
+      <div class="scroll-area" id="activityFeed">
+        <div class="loading"><div class="spinner"></div>Loading...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let adminPassword = '';
+const API_BASE = window.location.origin;
+
+function doAuth() {
+  adminPassword = document.getElementById('authInput').value;
+  fetch(`${API_BASE}/api/admin/marketing/dashboard`, { headers: { 'X-Admin-Password': adminPassword } })
+    .then(r => { if (!r.ok) throw new Error('auth'); return r.json(); })
+    .then(() => { document.getElementById('authOverlay').style.display='none'; document.getElementById('dashboard').style.display='block'; loadData(); setInterval(loadData, 30000); })
+    .catch(() => { document.getElementById('authError').style.display='block'; });
+}
+
+function headers() { return { 'X-Admin-Password': adminPassword, 'Content-Type': 'application/json' }; }
+
+async function loadData() {
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/marketing/dashboard`, { headers: headers() });
+    if (!res.ok) throw new Error(`${res.status}`);
+    const d = await res.json();
+    renderKPIs(d.stats);
+    renderChannels(d.channels, d.klaviyoEnabled);
+    renderSocialHistory(d.socialHistory || []);
+    renderActivityFeed(d.recentEvents || []);
+    renderMeta(d);
+    document.getElementById('lastUpdate').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    document.getElementById('statusDot').className = 'status-dot live';
+    document.getElementById('statusText').textContent = 'Connected';
+  } catch (err) {
+    document.getElementById('statusDot').className = 'status-dot off';
+    document.getElementById('statusText').textContent = 'Error: ' + err.message;
+  }
+}
+
+function renderKPIs(s) {
+  if (!s) return;
+  document.getElementById('kpiSocial').textContent = s.socialPostsSent || 0;
+  document.getElementById('kpiSocialSub').textContent = `${s.socialPostsFailed || 0} failed`;
+  document.getElementById('kpiEmail').textContent = s.emailEventsSent || 0;
+  document.getElementById('kpiSignups').textContent = s.newsletterSignups || 0;
+  document.getElementById('kpiOrders').textContent = s.ordersTracked || 0;
+  document.getElementById('kpiProducts').textContent = s.productsMarketed || 0;
+  document.getElementById('kpiCheckouts').textContent = s.checkoutsTracked || 0;
+  document.getElementById('kpiViews').textContent = s.productViewsTracked || 0;
+  document.getElementById('kpiDigests').textContent = s.digestsSent || 0;
+}
+
+function renderChannels(ch, klaviyoEnabled) {
+  if (!ch) return;
+  const channels = [
+    { name: 'Klaviyo Email', icon: '📧', status: klaviyoEnabled ? 'configured' : 'disabled' },
+    { name: 'Instagram', icon: '📸', status: ch.instagram || 'disabled' },
+    { name: 'Facebook', icon: '📘', status: ch.facebook || 'disabled' },
+    { name: 'Pinterest', icon: '📌', status: ch.pinterest || 'disabled' },
+    { name: 'Meta Pixel', icon: '🎯', status: document.querySelector('[id*="META_PIXEL"]') ? 'configured' : (typeof fbq !== 'undefined' ? 'active' : 'check_storefront') },
+    { name: 'Google Analytics', icon: '📊', status: typeof gtag !== 'undefined' ? 'active' : 'check_storefront' },
+  ];
+
+  document.getElementById('channelsList').innerHTML = channels.map(c => {
+    const badge = c.status === 'disabled' ? 'badge-disabled' : (c.status === 'active' ? 'badge-active' : 'badge-configured');
+    return `<div class="channel-row"><span class="channel-name"><span class="channel-icon">${c.icon}</span>${c.name}</span><span class="channel-badge ${badge}">${c.status}</span></div>`;
+  }).join('');
+}
+
+function renderSocialHistory(history) {
+  if (!history.length) {
+    document.getElementById('socialHistory').innerHTML = '<div style="padding:20px;color:var(--text3);text-align:center;font-size:13px">No social posts yet. Products will auto-post when they go live.</div>';
+    return;
+  }
+  let html = '<table class="table"><thead><tr><th>Platform</th><th>Product</th><th>Status</th><th>Time</th></tr></thead><tbody>';
+  history.forEach(h => {
+    const status = h.success ? '<span class="success">✓ Posted</span>' : `<span class="fail">✗ ${h.error || 'Failed'}</span>`;
+    const time = h.timestamp ? timeAgo(h.timestamp) : '—';
+    html += `<tr><td class="platform">${h.platform}</td><td>${truncate(h.product,30)}</td><td>${status}</td><td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${time}</td></tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('socialHistory').innerHTML = html;
+}
+
+function renderActivityFeed(events) {
+  if (!events.length) {
+    document.getElementById('activityFeed').innerHTML = '<div style="padding:20px;color:var(--text3);text-align:center;font-size:13px">No activity yet.</div>';
+    return;
+  }
+  document.getElementById('activityFeed').innerHTML = events.map(e =>
+    `<div class="feed-item"><div class="feed-dot ${e.type}"></div><div class="feed-msg">${e.message}</div><div class="feed-time">${timeAgo(e.timestamp)}</div></div>`
+  ).join('');
+}
+
+function renderMeta(d) {
+  document.getElementById('pendingPosts').textContent = d.pendingPosts || 0;
+  document.getElementById('queueProcessing').textContent = d.isProcessing ? '🔄 Active' : '⏸ Idle';
+  document.getElementById('queueProcessing').style.color = d.isProcessing ? 'var(--gold)' : 'var(--text3)';
+  if (d.uptime) {
+    const h = Math.floor(d.uptime/3600); const m = Math.floor((d.uptime%3600)/60);
+    document.getElementById('uptimeText').textContent = `${h}h ${m}m`;
+    document.getElementById('uptimeBar').style.width = Math.min(100, (d.uptime / 86400) * 100) + '%';
+  }
+}
+
+// Actions
+async function runTest() {
+  setActionResult('⏳ Testing channels...');
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/marketing/test`, { method: 'POST', headers: headers() });
+    const d = await res.json();
+    setActionResult(`✅ Test complete — Klaviyo: ${d.results?.klaviyo?.status || '?'}, Events: ${d.results?.klaviyoEvents || '?'}`);
+    loadData();
+  } catch (err) { setActionResult(`❌ Test failed: ${err.message}`); }
+}
+
+async function sendDigest() {
+  setActionResult('⏳ Sending digest...');
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/marketing/digest`, { method: 'POST', headers: headers(), body: JSON.stringify({ days: 7 }) });
+    const d = await res.json();
+    setActionResult(d.sent ? `✅ Digest sent — ${d.productCount} products` : `⚠️ Not sent: ${d.reason}`);
+    loadData();
+  } catch (err) { setActionResult(`❌ Failed: ${err.message}`); }
+}
+
+function promptPostProduct() {
+  const id = prompt('Enter product ID to force-post to all social channels:');
+  if (!id) return;
+  postProduct(id);
+}
+
+async function postProduct(productId) {
+  setActionResult('⏳ Posting to social...');
+  try {
+    const res = await fetch(`${API_BASE}/api/admin/marketing/post-now`, { method: 'POST', headers: headers(), body: JSON.stringify({ productId }) });
+    const d = await res.json();
+    if (d.success) {
+      const r = d.results || {};
+      const summary = Object.entries(r).map(([p,v]) => `${p}: ${v.success ? '✓' : '✗'}`).join(', ');
+      setActionResult(`✅ Posted — ${summary}`);
+    } else { setActionResult(`❌ ${d.error || 'Failed'}`); }
+    loadData();
+  } catch (err) { setActionResult(`❌ ${err.message}`); }
+}
+
+function setActionResult(msg) { document.getElementById('actionResult').textContent = msg; }
+
+// Helpers
+function timeAgo(ts) {
+  const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+  return `${Math.floor(s/86400)}d ago`;
+}
+function truncate(s, n) { return s && s.length > n ? s.substring(0, n) + '…' : (s || '—'); }
+
+// Auto-auth from URL param (for embedding)
+const params = new URLSearchParams(window.location.search);
+if (params.get('key')) { adminPassword = params.get('key'); document.getElementById('authOverlay').style.display='none'; document.getElementById('dashboard').style.display='block'; loadData(); setInterval(loadData, 30000); }
+</script>
+</body>
+</html>

@@ -25,6 +25,12 @@ const marketplaceRoutes = require('./routes/marketplace');
 const aiRoutes = require('./routes/ai');
 const openclawRoutes = require('./routes/openclaw');
 const storeRoutes = require('./routes/store');
+const marketingRoutes = require('./routes/marketing');
+
+// Service imports for marketing init
+const marketing = require('./services/MarketingOrchestrator');
+const clawdbotBridge = require('./services/ClawdbotBridge');
+const aiContentGenerator = require('./services/AIContentGenerator');
 
 const app = express();
 
@@ -89,6 +95,7 @@ app.use('/api/automation', apiLimiter, automationRoutes);
 app.use('/api/marketplace', apiLimiter, marketplaceRoutes);
 app.use('/api/ai', apiLimiter, aiRoutes);
 app.use('/api/openclaw', apiLimiter, openclawRoutes);
+app.use('/api', marketingRoutes);
 
 // =======================================
 // PIPELINE TRIGGER WEBHOOK
@@ -249,6 +256,13 @@ app.post('/api/webhooks/auto-list', async (req, res) => {
             }
             await p.save();
             listed++;
+            
+            // Trigger marketing for newly listed product
+            try {
+              await marketing.onProductLive(p);
+            } catch (mktErr) {
+              logger.warn(`Marketing hook failed for ${p.title}: ${mktErr.message}`);
+            }
         }
         
         logger.info(`Auto-list webhook: ${listed} products listed for storefront`);
@@ -256,6 +270,18 @@ app.post('/api/webhooks/auto-list', async (req, res) => {
     } catch (err) {
         logger.error('Auto-list webhook error:', err);
         res.status(500).json({ error: err.message });
+    }
+});
+
+// =======================================
+// MARKETING DASHBOARD
+// =======================================
+app.get('/admin/marketing-dashboard', (req, res) => {
+    const dashPath = path.join(__dirname, '../marketing-dashboard.html');
+    if (fs.existsSync(dashPath)) {
+        res.sendFile(dashPath);
+    } else {
+        res.status(404).send('Marketing dashboard not found');
     }
 });
 
@@ -331,6 +357,10 @@ async function start() {
                     await Product.createIndexes();
                     await Order.createIndexes();
                     logger.info('Database indexes ensured');
+
+            // Initialize marketing automation
+            marketing.init(logger, clawdbotBridge, aiContentGenerator);
+            logger.info('Marketing system initialized');
 
             initCronJobs();
 
